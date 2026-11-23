@@ -13,6 +13,10 @@ import android.view.SurfaceView;
 import androidx.annotation.NonNull;
 
 import edu.hitsz.aircraft.AbstractAircraft;
+import edu.hitsz.aircraft.AceAircraft;
+import edu.hitsz.aircraft.AdvancedAircraft;
+import edu.hitsz.aircraft.BossAircraft;
+import edu.hitsz.aircraft.EliteEnemy;
 import edu.hitsz.aircraft.HeroAircraft;
 import edu.hitsz.basic.AbstractFlyingObject;
 import edu.hitsz.bullet.BaseBullet;
@@ -23,6 +27,9 @@ import edu.hitsz.factory.EliteFactory;
 import edu.hitsz.factory.EnemyFactory;
 import edu.hitsz.factory.MobFactory;
 import edu.hitsz.prop.AbstractProp;
+import edu.hitsz.prop.BombProp;
+import edu.hitsz.prop.FreezeProp;
+import edu.hitsz.prop.PropObserver;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -53,6 +60,12 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
     protected int enemyMaxNumber;
     protected int score = 0;
     protected boolean gameOverFlag = false;
+
+    // 时间与创新功能连击机制
+    protected int timeInterval = 40;
+    protected int timeCount = 0;
+    protected int comboCount = 0;
+    protected long lastKillTime = 0;
 
     // 敌机与射击计时计数器
     protected double enemySpawnCycle = 20;
@@ -149,7 +162,7 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
                 draw();
             }
             try {
-                Thread.sleep(40);
+                Thread.sleep(timeInterval);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -157,10 +170,197 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
     }
 
     /**
-     * 游戏数据驱动逻辑 (第 4 步接入完整逻辑)
+     * 游戏主时序数据驱动逻辑
      */
     protected void action() {
-        // 后续接入生成、射击、移动与碰撞检测
+        // 连击超时断连判定 (超过2秒未击杀重置连击)
+        if (System.currentTimeMillis() - lastKillTime > 2000) {
+            comboCount = 0;
+        }
+
+        timeCount += timeInterval;
+        updateDifficulty();
+
+        // 敌机生成
+        enemySpawnCounter++;
+        if (enemySpawnCounter >= enemySpawnCycle) {
+            enemySpawnCounter = 0;
+            spawnEnemyAction();
+        }
+
+        shootAction();
+        bulletsMoveAction();
+        aircraftMoveAction();
+        propsMoveAction();
+        crashCheckAction();
+        postProcessAction();
+        checkResultAction();
+    }
+
+    private void spawnEnemyAction() {
+        if (score >= scoreThreshold && !bossExisting) {
+            spawnBoss();
+        }
+
+        if (enemyAircraft.size() < enemyMaxNumber) {
+            AbstractAircraft newEnemy = produceEnemy();
+            if (newEnemy != null) {
+                int enhancedHp = (int) (newEnemy.getHp() * enemyHpMultiplier);
+                newEnemy.increaseHp(enhancedHp - newEnemy.getHp());
+
+                int enhancedSpeedY = (int) (newEnemy.getSpeedY() * enemySpeedMultiplier);
+                newEnemy.setSpeedY(enhancedSpeedY);
+
+                enemyAircraft.add(newEnemy);
+            }
+        }
+    }
+
+    private void shootAction() {
+        // 英雄机自动射击
+        heroShootCounter++;
+        if (heroShootCounter >= heroShootCycle) {
+            heroShootCounter = 0;
+            if (heroAircraft != null) {
+                heroBullets.addAll(heroAircraft.shoot());
+            }
+        }
+
+        // 敌机射击
+        enemyShootCounter++;
+        if (enemyShootCounter >= enemyShootCycle) {
+            enemyShootCounter = 0;
+            for (AbstractAircraft enemy : enemyAircraft) {
+                enemyBullets.addAll(enemy.shoot());
+            }
+        }
+    }
+
+    private void bulletsMoveAction() {
+        for (BaseBullet bullet : heroBullets) {
+            bullet.forward();
+        }
+        for (BaseBullet bullet : enemyBullets) {
+            bullet.forward();
+        }
+    }
+
+    private void aircraftMoveAction() {
+        for (AbstractAircraft enemy : enemyAircraft) {
+            enemy.forward();
+        }
+    }
+
+    private void propsMoveAction() {
+        for (AbstractProp prop : props) {
+            prop.forward();
+        }
+    }
+
+    private void crashCheckAction() {
+        // 1. 敌机子弹击中英雄机
+        for (BaseBullet bullet : enemyBullets) {
+            if (bullet.notValid()) continue;
+            if (heroAircraft != null && heroAircraft.crash(bullet)) {
+                heroAircraft.decreaseHp(bullet.getPower());
+                bullet.vanish();
+            }
+        }
+
+        // 2. 英雄机子弹击中敌机
+        for (BaseBullet bullet : heroBullets) {
+            if (bullet.notValid()) continue;
+            for (AbstractAircraft enemy : enemyAircraft) {
+                if (enemy.notValid()) continue;
+                if (enemy.crash(bullet)) {
+                    enemy.decreaseHp(bullet.getPower());
+                    bullet.vanish();
+
+                    if (enemy.notValid()) {
+                        // 连击数累加
+                        long currentTime = System.currentTimeMillis();
+                        if (currentTime - lastKillTime <= 2000) {
+                            comboCount++;
+                        } else {
+                            comboCount = 1;
+                        }
+                        lastKillTime = currentTime;
+
+                        int multiplier = Math.min(comboCount, 5);
+                        int baseScore = 10;
+                        if (enemy instanceof BossAircraft) {
+                            baseScore = 100;
+                            bossExisting = false;
+                        } else if (enemy instanceof AceAircraft) {
+                            baseScore = 50;
+                        } else if (enemy instanceof AdvancedAircraft) {
+                            baseScore = 30;
+                        } else if (enemy instanceof EliteEnemy) {
+                            baseScore = 20;
+                        }
+
+                        // 连击倍率计分
+                        score += baseScore * multiplier;
+
+                        // 掉落道具
+                        props.addAll(enemy.dropProps());
+                    }
+                }
+
+                // 英雄机与敌机撞击
+                if (heroAircraft != null && (enemy.crash(heroAircraft) || heroAircraft.crash(enemy))) {
+                    enemy.vanish();
+                    heroAircraft.decreaseHp(Integer.MAX_VALUE);
+                }
+            }
+        }
+
+        // 3. 英雄机拾取道具
+        for (AbstractProp prop : props) {
+            if (prop.notValid()) continue;
+            if (heroAircraft != null && heroAircraft.crash(prop)) {
+                if (prop instanceof BombProp) {
+                    for (AbstractAircraft enemy : enemyAircraft) {
+                        if (enemy.notValid() || enemy instanceof BossAircraft) continue;
+                        if (enemy instanceof AceAircraft) {
+                            if (enemy.getHp() <= 50) score += 50;
+                        } else if (enemy instanceof EliteEnemy) {
+                            score += 20;
+                        } else if (enemy instanceof AdvancedAircraft) {
+                            score += 30;
+                        } else {
+                            score += 10;
+                        }
+                    }
+                }
+
+                if (prop instanceof BombProp || prop instanceof FreezeProp) {
+                    for (AbstractAircraft enemy : enemyAircraft) {
+                        prop.addObserver(enemy);
+                    }
+                    for (BaseBullet enemyBullet : enemyBullets) {
+                        if (enemyBullet instanceof PropObserver) {
+                            prop.addObserver((PropObserver) enemyBullet);
+                        }
+                    }
+                }
+                prop.active();
+                prop.vanish();
+            }
+        }
+    }
+
+    private void postProcessAction() {
+        enemyBullets.removeIf(AbstractFlyingObject::notValid);
+        heroBullets.removeIf(AbstractFlyingObject::notValid);
+        enemyAircraft.removeIf(AbstractFlyingObject::notValid);
+        props.removeIf(AbstractFlyingObject::notValid);
+    }
+
+    private void checkResultAction() {
+        if (heroAircraft != null && heroAircraft.getHp() <= 0) {
+            gameOverFlag = true;
+        }
     }
 
     /**
@@ -208,6 +408,16 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
             // 4. 绘制得分与血量
             paintScoreAndLife(canvas);
 
+            // 5. 游戏结束文字提示
+            if (gameOverFlag) {
+                mPaint.setColor(Color.RED);
+                mPaint.setTextSize(90);
+                mPaint.setFakeBoldText(true);
+                String overText = "GAME OVER";
+                float textWidth = mPaint.measureText(overText);
+                canvas.drawText(overText, (screenWidth - textWidth) / 2f, screenHeight / 2f, mPaint);
+            }
+
         } finally {
             mSurfaceHolder.unlockCanvasAndPost(canvas);
         }
@@ -236,6 +446,14 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
         y += 65;
         if (heroAircraft != null) {
             canvas.drawText("LIFE: " + this.heroAircraft.getHp(), x, y, mPaint);
+        }
+
+        // 连击特效
+        if (comboCount >= 2) {
+            y += 65;
+            mPaint.setColor(Color.rgb(255, 165, 0));
+            mPaint.setTextSize(50 + Math.min(comboCount * 2, 20));
+            canvas.drawText("COMBO x" + comboCount + " !!", x, y, mPaint);
         }
     }
 
