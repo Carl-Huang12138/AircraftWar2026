@@ -5,10 +5,19 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 
 import edu.hitsz.R;
-import edu.hitsz.aircraft.*;
+import edu.hitsz.aircraft.AceAircraft;
+import edu.hitsz.aircraft.AdvancedAircraft;
+import edu.hitsz.aircraft.BossAircraft;
+import edu.hitsz.aircraft.EliteEnemy;
+import edu.hitsz.aircraft.HeroAircraft;
+import edu.hitsz.aircraft.MobEnemy;
 import edu.hitsz.bullet.EnemyBullet;
 import edu.hitsz.bullet.HeroBullet;
-import edu.hitsz.prop.*;
+import edu.hitsz.prop.BloodProp;
+import edu.hitsz.prop.BombProp;
+import edu.hitsz.prop.BulletProp;
+import edu.hitsz.prop.BulletPlusProp;
+import edu.hitsz.prop.FreezeProp;
 
 import java.util.HashMap;
 import java.util.Map;

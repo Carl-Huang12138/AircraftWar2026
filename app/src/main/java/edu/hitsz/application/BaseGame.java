@@ -5,7 +5,8 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.Rect;
+import android.os.Handler;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -29,7 +30,6 @@ import edu.hitsz.factory.MobFactory;
 import edu.hitsz.prop.AbstractProp;
 import edu.hitsz.prop.BombProp;
 import edu.hitsz.prop.FreezeProp;
-import edu.hitsz.prop.PropObserver;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -45,8 +45,14 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
     protected int screenWidth = 512;
     protected int screenHeight = 768;
     protected int backGroundTop = 0;
+    private ScrollingBackground background;
 
-    protected boolean mbLoop = false;
+    protected volatile boolean mbLoop = false;
+    protected final Object gameLock = new Object();
+    private boolean surfaceReady;
+    private boolean surfaceSized;
+    private boolean resumed;
+    private volatile Handler eventHandler;
     protected SurfaceHolder mSurfaceHolder;
     protected Paint mPaint;
     protected Thread gameThread;
@@ -70,10 +76,12 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
     // 敌机与射击计时计数器
     protected double enemySpawnCycle = 20;
     protected int enemySpawnCounter = 0;
-    protected double heroShootCycle = 15;
+    protected final double heroShootCycle = CombatTuning.HERO_SHOOT_CYCLE_TICKS;
+    protected double ringShootCycle = 15; // 仅环射沿用初版道具周期。
     protected int heroShootCounter = 0;
     protected double enemyShootCycle = 25;
     protected int enemyShootCounter = 0;
+    protected int bossShootCounter = 0;
 
     protected double enemyHpMultiplier = 1.0;
     protected double enemySpeedMultiplier = 1.0;
@@ -116,55 +124,138 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
 
     @Override
     public void surfaceCreated(@NonNull SurfaceHolder holder) {
-        mbLoop = true;
-        gameThread = new Thread(this);
-        gameThread.start();
+        surfaceReady = true;
+        surfaceSized = false;
     }
 
     @Override
     public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
-        this.screenWidth = width;
-        this.screenHeight = height;
-        Main.WINDOW_WIDTH = width;
-        Main.WINDOW_HEIGHT = height;
-        if (heroAircraft != null) {
-            heroAircraft.setLocation(screenWidth / 2.0, screenHeight - 250);
+        synchronized (gameLock) {
+            this.screenWidth = width;
+            this.screenHeight = height;
+            Bitmap source = ImageManager.getBackgroundImage(difficulty);
+            if (source != null && (background == null || !background.hasSize(width, height))) {
+                // 仅在尺寸变化时缩放，避免软件画布每帧重复缩放整张背景。
+                background = new ScrollingBackground(source, width, height);
+            }
+            Main.WINDOW_WIDTH = width;
+            Main.WINDOW_HEIGHT = height;
+            if (heroAircraft != null) {
+                heroAircraft.setLocation(screenWidth / 2.0, screenHeight - 250);
+            }
+            surfaceSized = true;
         }
+        startGameLoop();
     }
 
     @Override
     public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
-        mbLoop = false;
+        surfaceReady = false;
+        surfaceSized = false;
+        stopGameLoop();
+    }
+
+    public void setEventHandler(Handler handler) { eventHandler = handler; }
+
+    protected void sendGameEvent(int event, int value) {
+        Handler handler = eventHandler;
+        if (handler != null) handler.obtainMessage(event, value, 0).sendToTarget();
+    }
+
+    public void resumeGame() {
+        resumed = true;
+        startGameLoop();
+    }
+
+    public void pauseGame() {
+        resumed = false;
+        stopGameLoop();
+    }
+
+    private void startGameLoop() {
+        synchronized (gameLock) {
+            if (!surfaceReady || !surfaceSized || !resumed || gameThread != null) return;
+            mbLoop = true;
+            gameThread = new Thread(this, "AircraftWar-GameLoop");
+            gameThread.start();
+        }
+    }
+
+    private void stopGameLoop() {
+        // 与一次逻辑更新互斥，退出返回前确保上一局不再修改模型。
+        // 不在 UI 线程 join 持有 Surface 的线程，避免生命周期死锁。
+        synchronized (gameLock) {
+            mbLoop = false;
+            Thread oldThread = gameThread;
+            gameThread = null;
+            if (oldThread != null) oldThread.interrupt();
+        }
+    }
+
+    public boolean hasBoss() {
+        synchronized (gameLock) { return bossExisting; }
+    }
+
+    public boolean isGameOver() {
+        synchronized (gameLock) { return gameOverFlag; }
+    }
+
+    public int getScore() {
+        synchronized (gameLock) { return score; }
     }
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (event.getAction() == MotionEvent.ACTION_DOWN || event.getAction() == MotionEvent.ACTION_MOVE) {
-            if (heroAircraft != null && !gameOverFlag) {
-                float x = event.getX();
-                float y = event.getY();
-                // 限制在屏幕可见范围内
-                x = Math.max(heroAircraft.getWidth() / 2f, Math.min(x, screenWidth - heroAircraft.getWidth() / 2f));
-                y = Math.max(heroAircraft.getHeight() / 2f, Math.min(y, screenHeight - heroAircraft.getHeight() / 2f));
-                heroAircraft.setLocation(x, y);
+        synchronized (gameLock) {
+            if (event.getAction() == MotionEvent.ACTION_DOWN || event.getAction() == MotionEvent.ACTION_MOVE) {
+                if (heroAircraft != null && !gameOverFlag) {
+                    float x = event.getX();
+                    float y = event.getY();
+                    // 限制在屏幕可见范围内
+                    x = Math.max(heroAircraft.getWidth() / 2f, Math.min(x, screenWidth - heroAircraft.getWidth() / 2f));
+                    y = Math.max(heroAircraft.getHeight() / 2f, Math.min(y, screenHeight - heroAircraft.getHeight() / 2f));
+                    heroAircraft.setLocation(x, y);
+                }
             }
         }
+        if (event.getAction() == MotionEvent.ACTION_UP) performClick();
+        return true;
+    }
+
+    @Override public boolean performClick() {
+        super.performClick();
         return true;
     }
 
     @Override
     public void run() {
+        Thread current = Thread.currentThread();
         while (mbLoop) {
-            synchronized (mSurfaceHolder) {
+            long frameStart = System.nanoTime();
+            synchronized (gameLock) {
+                // 旧线程被停止后即使晚醒，也不能加入新一轮循环。
+                if (!mbLoop || current != gameThread) return;
                 if (!gameOverFlag) {
                     action();
                 }
                 draw();
+                if (gameOverFlag) {
+                    mbLoop = false;
+                    gameThread = null;
+                    return;
+                }
             }
             try {
-                Thread.sleep(timeInterval);
+                long remaining = timeInterval * 1_000_000L - (System.nanoTime() - frameStart);
+                if (remaining > 0) {
+                    Thread.sleep(remaining / 1_000_000L, (int) (remaining % 1_000_000L));
+                } else {
+                    // 超预算时也让出线程，避免连续抢占 gameLock 阻塞前后台切换。
+                    Thread.sleep(1);
+                }
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                Thread.currentThread().interrupt();
+                return;
             }
         }
     }
@@ -205,8 +296,7 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
         if (enemyAircraft.size() < enemyMaxNumber) {
             AbstractAircraft newEnemy = produceEnemy();
             if (newEnemy != null) {
-                int enhancedHp = (int) (newEnemy.getHp() * enemyHpMultiplier);
-                newEnemy.increaseHp(enhancedHp - newEnemy.getHp());
+                newEnemy.scaleInitialHp(enemyHpMultiplier);
 
                 int enhancedSpeedY = (int) (newEnemy.getSpeedY() * enemySpeedMultiplier);
                 newEnemy.setSpeedY(enhancedSpeedY);
@@ -219,7 +309,9 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
     private void shootAction() {
         // 英雄机自动射击
         heroShootCounter++;
-        if (heroShootCounter >= heroShootCycle) {
+        double currentHeroShootCycle = heroAircraft != null && heroAircraft.isRingShooting()
+                ? ringShootCycle : heroShootCycle;
+        if (heroShootCounter >= currentHeroShootCycle) {
             heroShootCounter = 0;
             if (heroAircraft != null) {
                 heroBullets.addAll(heroAircraft.shoot());
@@ -231,10 +323,24 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
         if (enemyShootCounter >= enemyShootCycle) {
             enemyShootCounter = 0;
             for (AbstractAircraft enemy : enemyAircraft) {
-                enemyBullets.addAll(enemy.shoot());
+                if (!(enemy instanceof BossAircraft)) enemyBullets.addAll(enemy.shoot());
             }
         }
+        // Boss 独立计时，困难模式的小敌机加速不再挤高 Boss 弹幕密度。
+        if (bossExisting) {
+            bossShootCounter++;
+            if (bossShootCounter >= getBossShootCycle()) {
+                bossShootCounter = 0;
+                for (AbstractAircraft enemy : enemyAircraft) {
+                    if (enemy instanceof BossAircraft) enemyBullets.addAll(enemy.shoot());
+                }
+            }
+        } else {
+            bossShootCounter = 0;
+        }
     }
+
+    protected double getBossShootCycle() { return enemyShootCycle; }
 
     private void bulletsMoveAction() {
         for (BaseBullet bullet : heroBullets) {
@@ -264,6 +370,7 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
             if (heroAircraft != null && heroAircraft.crash(bullet)) {
                 heroAircraft.decreaseHp(bullet.getPower());
                 bullet.vanish();
+                sendGameEvent(GameEvent.HIT, 0);
             }
         }
 
@@ -275,6 +382,7 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
                 if (enemy.crash(bullet)) {
                     enemy.decreaseHp(bullet.getPower());
                     bullet.vanish();
+                    sendGameEvent(GameEvent.HIT, 0);
 
                     if (enemy.notValid()) {
                         // 连击数累加
@@ -291,6 +399,7 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
                         if (enemy instanceof BossAircraft) {
                             baseScore = 100;
                             bossExisting = false;
+                            sendGameEvent(GameEvent.BOSS, 0);
                         } else if (enemy instanceof AceAircraft) {
                             baseScore = 50;
                         } else if (enemy instanceof AdvancedAircraft) {
@@ -307,11 +416,17 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
                     }
                 }
 
-                // 英雄机与敌机撞击
-                if (heroAircraft != null && (enemy.crash(heroAircraft) || heroAircraft.crash(enemy))) {
-                    enemy.vanish();
-                    heroAircraft.decreaseHp(Integer.MAX_VALUE);
-                }
+                if (bullet.notValid()) break;
+            }
+        }
+
+        // 机身碰撞独立于子弹列表：没有英雄子弹时也应能判定。
+        for (AbstractAircraft enemy : enemyAircraft) {
+            if (!enemy.notValid() && heroAircraft != null && !heroAircraft.notValid()
+                    && (enemy.crash(heroAircraft) || heroAircraft.crash(enemy))) {
+                enemy.vanish();
+                heroAircraft.decreaseHp(Integer.MAX_VALUE);
+                sendGameEvent(GameEvent.HIT, 0);
             }
         }
 
@@ -339,13 +454,12 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
                         prop.addObserver(enemy);
                     }
                     for (BaseBullet enemyBullet : enemyBullets) {
-                        if (enemyBullet instanceof PropObserver) {
-                            prop.addObserver((PropObserver) enemyBullet);
-                        }
+                        prop.addObserver(enemyBullet);
                     }
                 }
                 prop.active();
                 prop.vanish();
+                sendGameEvent(prop instanceof BombProp ? GameEvent.BOMB : GameEvent.SUPPLY, 0);
             }
         }
     }
@@ -358,8 +472,9 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
     }
 
     private void checkResultAction() {
-        if (heroAircraft != null && heroAircraft.getHp() <= 0) {
+        if (!gameOverFlag && heroAircraft != null && heroAircraft.getHp() <= 0) {
             gameOverFlag = true;
+            sendGameEvent(GameEvent.GAME_OVER, score);
         }
     }
 
@@ -367,25 +482,23 @@ public abstract class BaseGame extends SurfaceView implements SurfaceHolder.Call
      * 游戏画面绘制 (双缓冲 Canvas 渲染)
      */
     public void draw() {
-        Canvas canvas = mSurfaceHolder.lockCanvas();
+        Canvas canvas;
+        try {
+            canvas = mSurfaceHolder.lockCanvas();
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            Log.w("BaseGame", "Surface is no longer available", exception);
+            return;
+        }
         if (canvas == null) {
             return;
         }
         try {
+            // 不依赖 Surface 缓冲区保留旧内容，每帧完整清空并重绘。
+            canvas.drawColor(Color.BLACK);
             // 1. 绘制滚动背景
-            Bitmap bg = ImageManager.getBackgroundImage(difficulty);
-            if (bg != null) {
-                Rect src = new Rect(0, 0, bg.getWidth(), bg.getHeight());
-                Rect dst1 = new Rect(0, backGroundTop - screenHeight, screenWidth, backGroundTop);
-                Rect dst2 = new Rect(0, backGroundTop, screenWidth, backGroundTop + screenHeight);
-                canvas.drawBitmap(bg, src, dst1, null);
-                canvas.drawBitmap(bg, src, dst2, null);
-                backGroundTop += 2;
-                if (backGroundTop >= screenHeight) {
-                    backGroundTop = 0;
-                }
-            } else {
-                canvas.drawColor(Color.BLACK);
+            if (background != null) {
+                background.draw(canvas, backGroundTop);
+                backGroundTop = background.advance(backGroundTop, 2);
             }
 
             // 2. 绘制子弹、道具与敌机

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/menu_root" android:layout_width="match_parent"
+    android:layout_height="match_parent" android:background="@drawable/menu_background">
+    <ScrollView android:layout_width="match_parent" android:layout_height="match_parent"
+        android:fillViewport="true" android:clipToPadding="false">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingStart="28dp" android:paddingEnd="28dp" android:paddingTop="24dp" android:paddingBottom="24dp">
+            <ImageView android:layout_width="112dp" android:layout_height="104dp"
+                android:src="@drawable/hero" android:scaleType="fitCenter" android:importantForAccessibility="no" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="@string/menu_title" android:textSize="38sp" android:textStyle="bold"
+                android:textColor="@color/game_text" android:layout_marginTop="12dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="@string/menu_subtitle" android:textSize="14sp"
+                android:textColor="@color/game_text_secondary" android:layout_marginTop="8dp" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/select_difficulty" android:textSize="18sp" android:textStyle="bold"
+                android:textColor="@color/game_text" android:layout_marginTop="36dp"
+                android:labelFor="@id/difficulty_group" />
+            <RadioGroup android:id="@+id/difficulty_group" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="vertical"
+                android:checkedButton="@id/difficulty_easy" android:layout_marginTop="8dp">
+                <RadioButton android:id="@+id/difficulty_easy" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:minHeight="52dp" android:text="@string/easy_option"
+                    android:textColor="@color/game_text" android:buttonTint="@color/game_accent" android:textSize="16sp" />
+                <RadioButton android:id="@+id/difficulty_medium" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:minHeight="52dp" android:text="@string/medium_option"
+                    android:textColor="@color/game_text" android:buttonTint="@color/game_accent" android:textSize="16sp" />
+                <RadioButton android:id="@+id/difficulty_hard" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:minHeight="52dp" android:text="@string/hard_option"
+                    android:textColor="@color/game_text" android:buttonTint="@color/game_accent" android:textSize="16sp" />
+            </RadioGroup>
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/sound_enabled" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:minHeight="56dp" android:checked="true"
+                android:text="@string/sound_option" android:textSize="16sp" android:textColor="@color/game_text"
+                android:layout_marginTop="12dp" />
+            <com.google.android.material.button.MaterialButton android:id="@+id/start_game"
+                android:layout_width="match_parent" android:layout_height="64dp"
+                android:layout_marginTop="20dp" android:text="@string/start_game" android:textSize="18sp"
+                android:textStyle="bold" android:textColor="@color/game_background"
+                android:backgroundTint="@color/game_accent" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:gravity="center" android:text="@string/play_hint" android:textSize="13sp"
+                android:textColor="@color/game_text_secondary" android:layout_marginTop="16dp" />
+        </LinearLayout>
+    </ScrollView>
+</FrameLayout>

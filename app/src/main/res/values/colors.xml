@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
+    <color name="game_background">#101A2B</color>
+    <color name="game_text">#F4F7FC</color>
+    <color name="game_text_secondary">#BCCBE0</color>
+    <color name="game_accent">#8AE0D2</color>
 </resources>

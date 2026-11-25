@@ -12,7 +12,6 @@ public class EasyGame extends BaseGame {
 
     public EasyGame(Context context) {
         super(context);
-        this.heroShootCycle = 15;
         this.enemyShootCycle = 30;
         this.enemySpawnCycle = 30;
     }
