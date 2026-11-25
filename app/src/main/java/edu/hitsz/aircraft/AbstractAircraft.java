@@ -18,7 +18,7 @@ public abstract class AbstractAircraft extends AbstractFlyingObject implements P
     //最大生命值
     protected int maxHp;
     protected int hp;
-    protected ShootStrategy shootStrategy;
+    protected volatile ShootStrategy shootStrategy;
 
     public AbstractAircraft(int locationX, int locationY, int speedX, int speedY, int hp) {
         super(locationX, locationY, speedX, speedY);
@@ -49,6 +49,11 @@ public abstract class AbstractAircraft extends AbstractFlyingObject implements P
         return hp;
     }
 
+    /** 仅在生成敌机时使用；与拾取补血的上限逻辑分开。 */
+    public void scaleInitialHp(double multiplier) {
+        maxHp = Math.max(1, (int) Math.round(maxHp * multiplier));
+        hp = maxHp;
+    }
 
     /**
      * 飞机射击方法 (统一交由策略类执行)
@@ -78,5 +83,3 @@ public abstract class AbstractAircraft extends AbstractFlyingObject implements P
         this.shootStrategy = shootStrategy;
     }
 }
-
-

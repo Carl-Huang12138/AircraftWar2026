@@ -12,7 +12,7 @@ import edu.hitsz.prop.BombProp;
  */
 public abstract class BaseBullet extends AbstractFlyingObject implements PropObserver{
 
-    private int power = 0;
+    private final int power;
 
     public BaseBullet(int locationX, int locationY, int speedX, int speedY, int power) {
         super(locationX, locationY, speedX, speedY);

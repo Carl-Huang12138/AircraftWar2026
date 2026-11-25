@@ -1,3 +1,16 @@
 <resources>
+    <string name="menu_title">飞机大战</string>
+    <string name="menu_subtitle">选择你的飞行挑战</string>
+    <string name="select_difficulty">游戏难度</string>
+    <string name="easy_option">简单 · 150 生命，无 Boss</string>
+    <string name="medium_option">普通 · 100 生命，迎战 Boss</string>
+    <string name="hard_option">困难 · 80 生命，更强的敌机</string>
+    <string name="sound_option">音乐与音效</string>
+    <string name="start_game">开始游戏</string>
+    <string name="play_hint">拖动战机移动 · 自动射击\n连续击毁敌机可获得连击加分</string>
+    <string name="leave_game">返回菜单</string>
+    <string name="game_over">游戏结束</string>
+    <string name="game_result">%1$s\n本局得分：%2$d</string>
+    <string name="play_again">再来一局</string>
     <string name="app_name">AircraftWar2026</string>
 </resources>

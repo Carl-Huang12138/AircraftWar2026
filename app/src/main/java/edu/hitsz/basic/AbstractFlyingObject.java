@@ -131,7 +131,6 @@ public abstract class AbstractFlyingObject {
         return height;
     }
 
-
     /**
      * 标记消失
      * isValid = false.
@@ -146,4 +145,3 @@ public abstract class AbstractFlyingObject {
     }
 
 }
-

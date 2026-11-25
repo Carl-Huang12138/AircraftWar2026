@@ -3,13 +3,12 @@ package edu.hitsz.bullet;
 import edu.hitsz.prop.AbstractProp;
 import edu.hitsz.prop.BombProp;
 import edu.hitsz.prop.FreezeProp;
-import edu.hitsz.prop.PropObserver;
 
 /**
  * 敌机子弹
  * @Author hitsz
  */
-public class EnemyBullet extends BaseBullet implements PropObserver {
+public class EnemyBullet extends BaseBullet {
 
     public EnemyBullet(int locationX, int locationY, int speedX, int speedY, int power) {
         super(locationX, locationY, speedX, speedY, power);
@@ -33,7 +32,7 @@ public class EnemyBullet extends BaseBullet implements PropObserver {
                         this.speedY = originalSpeedY;
                     }
                 } catch (InterruptedException e) {
-                    e.printStackTrace();
+                    Thread.currentThread().interrupt();
                 }
             }).start();
         }
